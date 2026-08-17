@@ -59,6 +59,17 @@ app.register(async (app) => {
 		}
 	})
 
+	// Expose the authenticated user (injected by Authelia forward-auth via Traefik)
+	// so the client can show real names on live cursors.
+	app.get('/api/me', async (req, res) => {
+		const h = req.headers as Record<string, string | undefined>
+		res.send({
+			user: h['remote-user'] ?? null,
+			name: h['remote-name'] ?? h['remote-user'] ?? null,
+			email: h['remote-email'] ?? null,
+		})
+	})
+
 	// To enable blob storage for assets, we add a simple endpoint supporting PUT and GET requests
 	// But first we need to allow all content types with no parsing, so we can handle raw data
 	app.addContentTypeParser('*', (_, __, done) => done(null))

@@ -7,6 +7,7 @@ import {
     Tldraw,
     uniqueId,
 } from 'tldraw'
+import { useTldrawUser } from '@tldraw/editor'
 import {getAssetUrlsByMetaUrl} from '@tldraw/assets/urls'
 import { useParams } from 'react-router-dom'
 import { ReactNode, useEffect, useState } from 'react'
@@ -18,35 +19,101 @@ if(import.meta.env.MODE === 'production') {
     WORKER_URL = window.location.origin;
 }
 
-// In this example, the room ID is hard-coded. You can set this however you like though.
-const roomId = 'test-room'
+const USER_COLORS = ['#ff5d5d', '#ff8b5d', '#ffc65d', '#8bd05d', '#5dd0a3', '#5da7d0', '#5d7fd0', '#a35dd0', '#d05db4']
+
+function pickColor(name: string) {
+    let h = 0
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0
+    return USER_COLORS[h % USER_COLORS.length]
+}
+
+function getDeviceLabel(): string {
+    const ua = navigator.userAgent
+    if (/iPad/i.test(ua)) return 'iPad'
+    if (/iPhone|iPod/i.test(ua)) return 'iPhone'
+    if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android' : 'Android-Tablet'
+    if (/Mac OS X/i.test(ua)) return 'Mac'
+    if (/Windows/i.test(ua)) return 'Windows'
+    if (/Linux/i.test(ua)) return 'Linux'
+    return 'Gerät'
+}
+
+function getDeviceId(): string {
+    const existing = sessionStorage.getItem('tldraw-device-id')
+    if (existing) return existing
+    const id = `dev-${Math.random().toString(36).slice(2, 10)}`
+    sessionStorage.setItem('tldraw-device-id', id)
+    return id
+}
+
+type Me = { user: string | null; name: string | null } | null
 
 export function Room() {
     const { roomId } = useParams<{ roomId: string }>()
+    const [me, setMe] = useState<Me>(null)
+    const [deviceId] = useState(getDeviceId)
+    const [deviceLabel] = useState(getDeviceLabel)
+
+    useEffect(() => {
+        let cancelled = false
+        fetch(`${WORKER_URL}/api/me`)
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+            .then((data) => {
+                if (!cancelled) setMe({ user: data?.user ?? null, name: data?.name ?? null })
+            })
+            .catch(() => {
+                if (!cancelled) setMe({ user: null, name: null })
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    const userName = me?.name ? `${me.name} · ${deviceLabel}` : 'Gast'
+    const userId = me?.user ? `${me.user}:${deviceId}` : deviceId
+    const userColor = pickColor(userName)
 
     // Create a store connected to multiplayer.
     const store = useSync({
         // We need to know the websocket's URI...
         uri: `${WORKER_URL}/api/connect/${roomId}`,
-        // ...and how to handle static assets like images & videos
+        // ...how to handle static assets like images & videos
         assets: multiplayerAssets,
+        // A unique presence id per tab so the same person on multiple devices
+        // stays clearly separated. Must match the user passed to <Tldraw>.
+        userInfo: { id: userId, name: userName, color: userColor },
+    })
+
+    const user = useTldrawUser({
+        userPreferences: {
+            id: userId,
+            name: userName,
+            color: userColor,
+        },
     })
 
     return (
         <RoomWrapper roomId={roomId}>
-            <Tldraw
-                // we can pass the connected store into the Tldraw component which will handle
-                // loading states & enable multiplayer UX like cursors & a presence menu
-                store={store}
-                assetUrls={assetUrls}
-                deepLinks
-                onMount={(editor) => {
-                    // @ts-expect-error
-                    window.editor = editor
-                    // when the editor is ready, we need to register out bookmark unfurling service
-                    editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
-                }}
-            />
+            {me ? (
+                <Tldraw
+                    // we can pass the connected store into the Tldraw component which will handle
+                    // loading states & enable multiplayer UX like cursors & a presence menu
+                    store={store}
+                    assetUrls={assetUrls}
+                    deepLinks
+                    user={user}
+                    onMount={(editor) => {
+                        // @ts-expect-error
+                        window.editor = editor
+                        // when the editor is ready, we need to register out bookmark unfurling service
+                        editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
+                    }}
+                />
+            ) : (
+                <div className="RoomWrapper-content">
+                    <p>Lade …</p>
+                </div>
+            )}
         </RoomWrapper>
     )
 }
