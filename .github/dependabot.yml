@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # package.json + yarn.lock (tldraw-SDK, @tldraw/*, vite, react, fastify)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:40"
+      timezone: Europe/Berlin
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    # Majors (z.B. tldraw 4 -> 5) bleiben eigene PRs, die brauchen einen Test
+  # Node-Basisbild im Dockerfile
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:40"
+      timezone: Europe/Berlin
+    commit-message:
+      prefix: "chore(deps)"
+  # checkout/build-push/metadata/login-Aktionen
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:40"
+      timezone: Europe/Berlin
+    commit-message:
+      prefix: "chore(ci)"
